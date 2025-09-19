@@ -1,20 +1,19 @@
-// palinfinder.s, provided with Lab1 in TDT4258 autumn 2025
 .global _start
 
-I .req r0 // int I;
-Input .req r1 // char *Input;
-Char .req r2 // char Char;
-Length .req r3 // int Length = I;	
-Char2 .req r4 // char Char2;
-J .req r5 // int J = Length - I - 1;
+I .req r0
+Input .req r1
+Char .req r2
+Length .req r3
+Char2 .req r4
+J .req r5
 
 char_to_lower:
-	cmp Char, #'A' // 'A'
+	cmp Char, #'A'
 	blt not_upper
-	cmp Char, #'Z' // 'Z'
+	cmp Char, #'Z'
 	bgt not_upper
 
-	add Char, Char, #32 // char + 32
+	add Char, Char, #32
 	strb Char, [Input, I]
 not_upper:
 	bx lr
@@ -45,7 +44,7 @@ _start:
 
 compute_length_and_to_lower:
 	ldrb Char, [Input, I] // Char = Input[I];
-	bl char_to_lower // Char = tolower(Char);
+	bl char_to_lower // Char = toLower(Char);
 	add I, I, #1 // I++;
 	cmp Char, #0
 	beq end_of_string // if (Char == '\0') goto end_of_string;
