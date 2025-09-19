@@ -19,6 +19,26 @@ char_to_lower:
 not_upper:
 	bx lr
 
+/* Update the LED status */
+update_leds:
+	ldr r1, =led_address
+	ldr r1, [r1]
+	str r0, [r1]
+	bx lr
+
+Uart .req r1
+print_to_uart:
+	ldr Uart, =uart_address
+	ldr Uart, [Uart]
+print_to_uart_loop:
+	ldrb Char, [r0]
+	str Char, [Uart]
+	add r0, r0, #1
+	cmp Char, #0
+	bne print_to_uart_loop
+	bx lr
+.unreq Uart
+
 _start:
 	mov I, #0 // int I = 0;
 	ldr Input, =input // char *Input = input;
@@ -55,51 +75,22 @@ check_loop:
 is_palindrome:
 	// Switch on only the 5 rightmost LEDs
 	// Write 'Palindrom detected' to UART
-	// r0 = led address
-	ldr r0, =led_address
-	ldr r0, [r0]
-	mov r1, #0b11111
-	str r1, [r0]
-	// r0 = uart address
-	// r1 = address of character
-	// r2 = character
-	ldr r0, =uart_address
-	ldr r0, [r0]
-	ldr r1, =palindrome
-	continue_printing_is_palindrom:
-		ldrb r2, [r1]
-		cmp r2, #0
-		beq _exit
-		
-		str r2, [r0]
-		add r1, r1, #1
-		b continue_printing_is_palindrom
+	mov r0, #0b11111
+	bl update_leds
+
+	ldr r0, =palindrome
+	bl	print_to_uart
 	
 	b _exit
 
 is_no_palindrome:
 	// Switch on only the 5 leftmost LEDs
 	// Write 'Not a palindrom' to UART
-	// r0 = led address
-	// r1 = led status
-	ldr r0, =led_address
-	ldr r0, [r0]
-	mov r1, #0b1111100000
-	str r1, [r0]
-	// r0 = uart address
-	// r1 = address of character
-	// r2 = character
-	ldr r0, =uart_address
-	ldr r0, [r0]
-	ldr r1, =no_palindrome
-	continue_printing_is_no_palindrom:
-		ldrb r2, [r1]
-		cmp r2, #0
-		beq _exit
-		
-		str r2, [r0]
-		add r1, r1, #1
-		b continue_printing_is_no_palindrom
+	mov r0, #0b1111100000
+	bl update_leds
+
+	ldr r0, =no_palindrome
+	bl print_to_uart
 
 	b _exit
 	
