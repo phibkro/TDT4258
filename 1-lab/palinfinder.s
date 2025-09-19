@@ -62,9 +62,20 @@ check_palindrome:
 	sub J, J, #2
 check_loop:
 	ldrb Char, [Input, I] // Char = Input[I];
+	cmp Char, #'#'
+	beq wildcard
+	cmp Char, #'?'
+	beq wildcard
+
 	ldrb Char2, [Input, J] // Char2 = Input[J];
+	cmp Char2, #'#'
+	beq wildcard
+	cmp Char2, #'?'
+	beq wildcard
+
 	cmp Char, Char2
 	bne is_no_palindrome // if (Char != Char2) goto is_no_palindrome;
+wildcard:
 	cmp I, J // if (I >= J) goto is_palindrome;
 	bge is_palindrome
 	add I, I, #1 // I++;
