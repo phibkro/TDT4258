@@ -23,27 +23,17 @@ _start:
 	mov I, #0 // int I = 0;
 	ldr Input, =input // char *Input = input;
 
-/* Validate input length */
+compute_length_and_to_lower:
 	ldrb Char, [Input, I] // Char = Input[I];
-	cmp Char, #0
-	beq _exit // if (Char == 0) return 0;
 	bl char_to_lower // Char = tolower(Char);
 	add I, I, #1 // I++;
+	cmp Char, #0
+	beq end_of_string // if (Char == '\0') goto end_of_string;
+	b compute_length_and_to_lower // goto compute_length_and_to_lower;
 
-	ldrb Char, [Input, I] // Char = Input[I];
-	cmp Char, #0
-	beq _exit // if (Char == 0) return 0;
-	bl char_to_lower // Char = tolower(Char);
-	add I, I, #1 // I++;
-/* Input length longer than 2 */
-
-compute_length:
-	ldrb Char, [Input, I] // Char = Input[I];
-	bl char_to_lower // Char = tolower(Char);
-	add I, I, #1 // I++;
-	cmp Char, #0
-	beq check_palindrome // if (Char == '\0') goto check_palindrome;
-	b compute_length // goto compute_length;
+end_of_string:
+	cmp I, #2 // if (Length <= 2) goto is_palindrome;
+	ble _exit
 
 check_palindrome:
 	mov Length, I // Length = I;	
