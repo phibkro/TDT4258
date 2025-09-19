@@ -68,7 +68,8 @@ is_palindrome:
 	// r0 = led address
 	ldr r0, =led_address
 	ldr r0, [r0]
-	str #0x1F, [r0]
+	mov r1, #0b11111
+	str r1, [r0]
 	// r0 = uart address
 	// r1 = address of character
 	// r2 = character
@@ -93,7 +94,8 @@ is_no_palindrome:
 	// r1 = led status
 	ldr r0, =led_address
 	ldr r0, [r0]
-	str #0x3E0, [r0]
+	mov r1, #0b1111100000
+	str r1, [r0]
 	// r0 = uart address
 	// r1 = address of character
 	// r2 = character
@@ -110,7 +112,6 @@ is_no_palindrome:
 		b continue_printing_is_no_palindrom
 
 	b _exit
-	
 	
 _exit:
 	// Branch here for exit
