@@ -29,6 +29,43 @@ unsigned char tiles[NROWS][NCOLS] __attribute__((used)) = { 0 }; // DON'T TOUCH 
 #define USER_SPEED 15;
 #define WINNING_X_COORDINATE 320;
 #define LOSING_X_COORDINATE 7
+void SetRow(unsigned int y_coord, unsigned int color);
+asm("SetRow: \n\t"
+	"PUSH {R4-R6,LR} \n \t"
+	"LDR r6, =VGAaddress \n\t"
+	"LDR r6, [r6] \n\t"
+	"MOV r2, #0 \n\t" // x counter
+	"MOV r4, #0 \n\t" // x offset
+	"setrow_loop: \n\t"
+	"LSL r4, r2, #1 \n\t"
+	"LSL r5, r0, #10 \n\t"
+	"MOV r3, #0 \n\t" // offset
+	"ADD r3, r4, r5 \n\t"
+	"STRH r1, [r6, r3] \n\t"
+	"ADD r2, #1 \n\t"
+	"CMP r2, #320 \n\t"
+	"BLT setrow_loop \n\t"
+	"POP {R4-R6,LR} \n\t"
+	"BX LR");
+
+void SetColumn(unsigned int x_coord, unsigned int color);
+asm("SetColumn: \n\t"
+	"PUSH {R4-R6,LR} \n \t"
+	"LDR r6, =VGAaddress \n\t"
+	"LDR r6, [r6] \n\t"
+	"MOV r2, #0 \n\t" // y counter
+	"MOV r4, #0 \n\t" // y offset
+	"setcolumn_loop: \n\t"
+	"LSL r4, r2, #10 \n\t"
+	"LSL r5, r0, #1 \n\t"
+	"MOV r3, #0 \n\t" // offset
+	"ADD r3, r4, r5 \n\t"
+	"STRH r1, [r6, r3] \n\t"
+	"ADD r2, #1 \n\t"
+	"CMP r2, #240 \n\t"
+	"BLT setcolumn_loop \n\t"
+	"POP {R4-R6,LR} \n\t"
+	"BX LR");
 
 /***
  * You might use and modify the struct/enum definitions below this comment
