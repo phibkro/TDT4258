@@ -144,7 +144,7 @@ void WriteUart(char c);
 // TODO: Add the WriteUart assembly procedure here that respects the WriteUart C declaration on line 46
 asm("WriteUart: \n\t"
 	"LDR R1, =0xFF201000 \n\t"
-	"STR [R1], R0\n\t"
+	"STRH R0, [R1]\n\t"
 	"BX LR");
 
 // TODO: Implement the C functions below
@@ -198,7 +198,8 @@ void update_bar_state()
 
 void write(char *str)
 {
-	// TODO: Use WriteUart to write the string to JTAG UART
+	for (int i = 0; str[i] != '\0'; i++)
+		WriteUart(str[i]);
 }
 
 void play()
