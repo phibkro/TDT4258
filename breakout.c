@@ -61,12 +61,29 @@ GameState currentState = Stopped;
 void ClearScreen();
 // It must only clear the VGA screen, and not clear any game state
 asm("ClearScreen: \n\t"
+	"PUSH {R4-R6,LR} \n \t"
 	"LDR R3, =VGAaddress \n\t"
 	"LDR R3, [R3] \n\t"
-	"LSL R1, R1, #10 \n\t"
-	"LSL R0, R0, #1 \n\t"
-	"ADD R1, R0 \n\t"
-	"STRH R2, [R3,R1] \n\t"
+	"MOV r0, #0 \n\t"
+	"MOV r1, #0 \n\t" // x counter
+	"MOV r2, #0 \n\t" // y counter
+	"MOV r4, #0 \n\t" // x offset
+	"MOV r5, #0 \n\t" // y offset
+	"LDR r6, =0x0000F0F0 \n\t" // store red
+	"loop: \n\t"
+	"LSL r4, r1, #1 \n\t"
+	"LSL r5, r2, #10 \n\t"
+	"MOV r0, #0 \n\t"
+	"ADD r0, r4, r5 \n\t"
+	"STRH r6, [R3, R0] \n\t"
+	"ADD r1, #1 \n\t"
+	"CMP r1, #320 \n\t"
+	"BLT loop \n\t" /* increment y */
+	"MOV r1, #0 \n\t"
+	"ADD r2, #1 \n\t"
+	"CMP r2, #240 \n\t"
+	"BLT loop \n\t"
+	"POP {R4-R6,LR} \n\t"
 	"BX LR");
 
 void SetPixel(unsigned int x_coord, unsigned int y_coord, unsigned int color);
