@@ -21,13 +21,63 @@ char font8x8[128][8];																					 // DON'T TOUCH THIS - this is a forwa
 unsigned char tiles[NROWS][NCOLS] __attribute__((used)) = {0}; // DON'T TOUCH THIS - this is the tile map
 /**************************************************************************************************/
 
-/* Utility */
-#define true 1
-#define false 0
+/* Game */
+#define BAR_SPEED 15
+#define WINNING_X_COORDINATE 320
+#define LOSING_X_COORDINATE 7
+#define SCREEN_HEIGHT 240
+#define SCREEN_WIDTH 320
 
-/* IO */
+typedef enum _gameState
+{
+	Stopped = 0,
+	Running = 1,
+	Won = 2,
+	Lost = 3,
+	Exit = 4,
+} GameState;
 
-/* VGA */
+#define BRICK_SIZE 15
+typedef struct _block
+{
+	unsigned char destroyed;
+	unsigned char deleted;
+	unsigned int pos_x;
+	unsigned int pos_y;
+	unsigned int color;
+} Block;
+
+#define BALL_DIAMETER 7
+typedef struct _ball
+{
+	unsigned int pos_x;
+	unsigned int pos_y;
+	unsigned int direction;
+} Ball;
+
+typedef struct _game
+{
+	GameState currentState;
+	Ball ball;
+	Block *blocks;
+	unsigned int bar_pos_y;
+} Game;
+
+/* Globals */
+Game global = {
+		.currentState = Stopped,
+};
+void game_init(Game *game)
+{
+	game->currentState = Stopped;
+	game->ball.pos_x = width / 2;
+	game->ball.pos_y = height / 2;
+	game->bar_pos_y = height / 2;
+}
+
+/* DISPLAY LOGIC */
+
+/* IO: VGA */
 
 void ClearScreen();
 asm("ClearScreen: \n\t"
@@ -67,127 +117,202 @@ asm("SetPixel: \n\t"
 		"STRH R2, [R3,R1] \n\t"
 		"BX LR");
 
-/* UART */
+/* Display */
+#define BAR_WIDTH 7
+#define BAR_SEGMENT_HEIGHT 15
 
-int UartRead();
-asm("UartRead:\n\t"
+void draw_block(unsigned int x, unsigned int y, unsigned int width, unsigned int height, unsigned short color)
+{
+	for (unsigned int dx = 0; dx < width; dx++)
+	{
+		for (unsigned int dy = 0; dy < height; dy++)
+		{
+			SetPixel(x + dx, y + dy, color);
+		}
+	}
+}
+
+void draw_bar(unsigned int y)
+{
+	draw_block(0, y, BAR_WIDTH, BAR_SEGMENT_HEIGHT, red);
+	draw_block(0, y + BAR_SEGMENT_HEIGHT, BAR_WIDTH, BAR_SEGMENT_HEIGHT, green);
+	draw_block(0, y + 2 * BAR_SEGMENT_HEIGHT, BAR_WIDTH, BAR_SEGMENT_HEIGHT, red);
+}
+
+void draw_ball()
+{
+	if (global.ball.pos_x >= 0 && global.ball.pos_x < width - 7 && global.ball.pos_y >= 0 && global.ball.pos_y < height - 7)
+	{
+		draw_block(global.ball.pos_x + 3, global.ball.pos_y, 1, 1, black);
+		draw_block(global.ball.pos_x + 2, global.ball.pos_y + 1, 3, 1, black);
+		draw_block(global.ball.pos_x + 1, global.ball.pos_y + 2, 5, 1, black);
+		draw_block(global.ball.pos_x, global.ball.pos_y + 3, 7, 1, black);
+		draw_block(global.ball.pos_x + 1, global.ball.pos_y + 4, 5, 1, black);
+		draw_block(global.ball.pos_x + 2, global.ball.pos_y + 5, 3, 1, black);
+		draw_block(global.ball.pos_x + 3, global.ball.pos_y + 6, 1, 1, black);
+	}
+}
+
+/* GAME LOGIC */
+
+/* IO: UART */
+
+int ReadUart();
+asm("ReadUart:\n\t"
 		"LDR R1, =0xFF201000 \n\t"
 		"LDR R0, [R1]\n\t"
 		"BX LR");
 
-char UartGetChar()
-{
-	unsigned long long out = UartRead();
-
-	if (out & 0x8000)
-	{
-		// valid
-		return ((char)out & 0xFF);
-	}
-	else
-	{
-		return '\0';
-	}
-}
-
-void uart_drain_buffer()
-{
-	int remaining = 0;
-	do
-	{
-		unsigned long long out = UartRead();
-		if (!(out & 0x8000))
-		{
-			// not valid - abort reading
-			return;
-		}
-		remaining = (out & 0xFF0000) >> 4;
-	} while (remaining > 0);
-}
-
-void UartWrite(char c);
-asm("UartWrite: \n\t"
+void WriteUart(char c);
+asm("WriteUart: \n\t"
 		"LDR R1, =0xFF201000 \n\t"
 		"STRH R0, [R1]\n\t"
 		"BX LR");
 
+char UartGetChar()
+{
+	unsigned long long out = ReadUart();
+	char c = '\0';
+
+	if (out & 0x8000 && c != '\0')
+	{
+		// store first character
+		c = ((char)out & 0xFF);
+	}
+
+	// drain buffer
+	int remaining = 0;
+	while (remaining > 0)
+	{
+		/* code */
+		remaining = (out & 0xFF0000) >> 4;
+	}
+
+	return c;
+}
+
 void write(char *str)
 {
 	for (int i = 0; str[i] != '\0'; i++)
-		UartWrite(str[i]);
+		WriteUart(str[i]);
 }
-
-/* Game */
-#define BAR_SPEED 15
-#define WINNING_X_COORDINATE 320
-#define LOSING_X_COORDINATE 7
-#define SCREEN_HEIGHT 240
-#define SCREEN_WIDTH 320
-
-unsigned int bitmap[SCREEN_HEIGHT * SCREEN_WIDTH];
-
-typedef enum _gameState
-{
-	Stopped = 0,
-	Running = 1,
-	Won = 2,
-	Lost = 3,
-	Exit = 4,
-} GameState;
-
-#define BRICK_SIZE 15
-typedef struct _block
-{
-	unsigned char destroyed;
-	unsigned char deleted;
-	unsigned int pos_x;
-	unsigned int pos_y;
-	unsigned int color;
-} Block;
-
-#define BALL_DIAMETER 7
-typedef struct _ball
-{
-	unsigned int x_coord;
-	unsigned int y_coord;
-} Ball;
-
-typedef struct _game
-{
-	GameState currentState;
-	Ball ball;
-	Block *blocks;
-	int bar_y_coord;
-} Game;
-
-void game_init(Game *game) {
-	game->currentState = Stopped;
-	game->ball.x_coord = SCREEN_WIDTH / 2;
-	game->ball.y_coord = SCREEN_WIDTH / 2;
-	game->bar_y_coord = SCREEN_HEIGHT / 2;
-}
-
-/* Globals */
-Game global = {
-		.currentState = Stopped,
-		.ball = {
-				.x_coord = SCREEN_WIDTH / 2,
-				.y_coord = SCREEN_HEIGHT / 2,
-		},
-		.bar_y_coord = SCREEN_HEIGHT / 2,
-};
 
 // It must initialize the game
 void reset()
 {
-	uart_drain_buffer();
-
 	// TODO: You might want to reset other state in here
 	game_init(&global);
+	ClearScreen();
 }
 
 int main(int argc, char *argv[])
 {
-	write("hello world\n");
+	if (NCOLS < 1 || 18 < NCOLS)
+	{
+		// TODO
+		/* Inform user this is not a configurable state */
+		write("Invalid number of columns! NCOLS must be at least 1 and at most 18");
+		return 1;
+	}
+
+	reset();
+
+	// HINT: This loop allows the user to restart the game after loosing/winning the previous game
+	while (1)
+	{
+		switch (global.currentState)
+		{
+		case Stopped:
+		{
+			/* Start screen */
+			write("Press 'w' or 's' to start game\n");
+			while (global.currentState == Stopped)
+			{
+				unsigned long long out = ReadUart();
+				switch ((out & 0xFF))
+				{
+				case 0x77:
+				case 0x73:
+					global.currentState = Running;
+					break;
+
+				default:
+					break;
+				}
+			}
+
+			break;
+		}
+		case Running:
+		{
+			/* Game running */
+			/* Check for win/lose condition */
+			if (global.ball.pos_x < LOSING_X_COORDINATE)
+			{
+				global.currentState = Lost;
+				continue;
+			}
+			if (WINNING_X_COORDINATE < global.ball.pos_x)
+			{
+				global.currentState = Won;
+				continue;
+			}
+
+			/* IO Update bar */
+			{
+				unsigned long long out = ReadUart();
+				if ((out & 0x8000))
+				{
+					if ((out & 0xFF) == 0x77)
+					{
+						global.bar_pos_y -= BAR_SPEED;
+					}
+					if ((out & 0xFF) == 0x73)
+					{
+						global.bar_pos_y += BAR_SPEED;
+					}
+				}
+			}
+
+			/* Update game state */
+			draw_ball();
+			draw_bar(global.bar_pos_y);
+
+			// TODO: Update balls position and direction
+			// physics_update();
+
+			// TODO: Hit Check with Blocks
+			// HINT: try to only do this check when we potentially have a hit, as it is relatively expensive and can slow down game play a lot
+
+			/* Update screen */
+			break;
+		}
+		case Won:
+		{
+			for (unsigned int i = 0; i < 1000000; i++)
+			{
+				write(won);
+			}
+			global.currentState = Stopped;
+			reset();
+
+			break;
+		}
+		case Lost:
+		{
+			for (unsigned int i = 0; i < 1000000; i++)
+			{
+				write(lost);
+			}
+			global.currentState = Stopped;
+			reset();
+
+			break;
+		}
+		case Exit:
+		default:
+			return 0;
+		}
+	}
 	return 0;
 }
