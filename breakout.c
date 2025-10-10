@@ -22,11 +22,8 @@ unsigned char tiles[NROWS][NCOLS] __attribute__((used)) = {0}; // DON'T TOUCH TH
 /**************************************************************************************************/
 
 /* Game */
-#define BAR_SPEED 15
 #define WINNING_X_COORDINATE 320
 #define LOSING_X_COORDINATE 7
-#define SCREEN_HEIGHT 240
-#define SCREEN_WIDTH 320
 
 typedef enum _gameState
 {
@@ -47,33 +44,49 @@ typedef struct _block
 	unsigned int color;
 } Block;
 
-#define BALL_DIAMETER 7
-typedef struct _ball
+// Direction enums
+typedef enum
 {
-	unsigned int pos_x;
-	unsigned int pos_y;
-	unsigned int direction;
+	LEFT = -1,
+	RIGHT = 1
+} Horizontal;
+
+typedef enum
+{
+	UP = -1,
+	NEUTRAL = 0,
+	DOWN = 1
+} Vertical;
+
+#define BALL_DIAMETER 7
+// Ball state
+typedef struct
+{
+	unsigned int x;
+	unsigned int y;
+	Horizontal horizontal_direction;
+	Vertical vertical_direction;
+	unsigned int speed;
+	unsigned int diameter;
+	unsigned int prev_x;
+	unsigned int prev_y;
 } Ball;
 
-typedef struct _game
+// Bar state
+typedef struct
 {
-	GameState currentState;
-	Ball ball;
-	Block *blocks;
-	unsigned int bar_pos_y;
-} Game;
+	unsigned int y;
+	unsigned int x;
+	unsigned int width;
+	unsigned int height;
+	unsigned int step;
+	unsigned int prev_y;
+} Bar;
 
 /* Globals */
-Game global = {
-		.currentState = Stopped,
-};
-void game_init(Game *game)
-{
-	game->currentState = Stopped;
-	game->ball.pos_x = width / 2;
-	game->ball.pos_y = height / 2;
-	game->bar_pos_y = height / 2;
-}
+GameState game_state = Stopped;
+Ball ball;
+Bar bar;
 
 /* DISPLAY LOGIC */
 
@@ -118,8 +131,6 @@ asm("SetPixel: \n\t"
 		"BX LR");
 
 /* Display */
-#define BAR_WIDTH 7
-#define BAR_SEGMENT_HEIGHT 15
 
 void draw_block(unsigned int x, unsigned int y, unsigned int width, unsigned int height, unsigned short color)
 {
@@ -132,24 +143,116 @@ void draw_block(unsigned int x, unsigned int y, unsigned int width, unsigned int
 	}
 }
 
+void erase_bar_diff(unsigned int y)
+{
+	// If moving up, clear the bottom part that was previously occupied
+	if (y < bar.prev_y)
+	{
+		draw_block(0, y + bar.height, bar.width, bar.prev_y - y, white);
+	}
+	// If moving down, clear the top part that was previously occupied
+	else if (y > bar.prev_y)
+	{
+		draw_block(0, bar.prev_y, bar.width, y - bar.prev_y, white);
+	}
+}
+
 void draw_bar(unsigned int y)
 {
-	draw_block(0, y, BAR_WIDTH, BAR_SEGMENT_HEIGHT, red);
-	draw_block(0, y + BAR_SEGMENT_HEIGHT, BAR_WIDTH, BAR_SEGMENT_HEIGHT, green);
-	draw_block(0, y + 2 * BAR_SEGMENT_HEIGHT, BAR_WIDTH, BAR_SEGMENT_HEIGHT, red);
+	erase_bar_diff(y);
+	unsigned int segment_height = bar.height / 3;
+	draw_block(0, y, bar.width, segment_height, red);
+	draw_block(0, y + segment_height, bar.width, segment_height, green);
+	draw_block(0, y + 2 * segment_height, bar.width, segment_height, red);
+	bar.prev_y = y;
+}
+
+// Helper function to safely draw within bounds
+void safe_draw_block(int x, int y, int w, int h, unsigned int color)
+{
+	// Clip coordinates and dimensions to screen bounds
+	if (x < 0)
+	{
+		w += x; // Reduce width by the amount we're off-screen
+		x = 0;
+	}
+	if (y < 0)
+	{
+		h += y; // Reduce height by the amount we're off-screen
+		y = 0;
+	}
+	if (x + w > width)
+	{
+		w = width - x;
+	}
+	if (y + h > height)
+	{
+		h = height - y;
+	}
+
+	// Only draw if we have positive dimensions
+	if (w > 0 && h > 0)
+	{
+		draw_block(x, y, w, h, color);
+	}
+}
+
+void erase_ball()
+{
+	// Erase a square that's big enough to cover both the ball and its movement
+	int erase_size = ball.diameter + ball.speed * 2; // Add speed*2 to cover movement in any direction
+	safe_draw_block(ball.prev_x - ball.speed, ball.prev_y - ball.speed,erase_size, erase_size, white);
 }
 
 void draw_ball()
 {
-	if (global.ball.pos_x >= 0 && global.ball.pos_x < width - 7 && global.ball.pos_y >= 0 && global.ball.pos_y < height - 7)
+	erase_ball();
+
+	// Save current position for next erase
+	ball.prev_x = ball.x;
+	ball.prev_y = ball.y;
+
+	// First fill the entire ball area with white
+	safe_draw_block(ball.x, ball.y, ball.diameter, ball.diameter, white);
+
+	// Then draw the diamond shape in black
+	if (ball.x >= 0 && ball.x < width - 7 && ball.y >= 0 && ball.y < height - 7)
 	{
-		draw_block(global.ball.pos_x + 3, global.ball.pos_y, 1, 1, black);
-		draw_block(global.ball.pos_x + 2, global.ball.pos_y + 1, 3, 1, black);
-		draw_block(global.ball.pos_x + 1, global.ball.pos_y + 2, 5, 1, black);
-		draw_block(global.ball.pos_x, global.ball.pos_y + 3, 7, 1, black);
-		draw_block(global.ball.pos_x + 1, global.ball.pos_y + 4, 5, 1, black);
-		draw_block(global.ball.pos_x + 2, global.ball.pos_y + 5, 3, 1, black);
-		draw_block(global.ball.pos_x + 3, global.ball.pos_y + 6, 1, 1, black);
+		draw_block(ball.x + 3, ball.y, 1, 1, black);
+		draw_block(ball.x + 2, ball.y + 1, 3, 1, black);
+		draw_block(ball.x + 1, ball.y + 2, 5, 1, black);
+		draw_block(ball.x, ball.y + 3, 7, 1, black);
+		draw_block(ball.x + 1, ball.y + 4, 5, 1, black);
+		draw_block(ball.x + 2, ball.y + 5, 3, 1, black);
+		draw_block(ball.x + 3, ball.y + 6, 1, 1, black);
+	}
+}
+
+void draw_playing_field()
+{
+	// Draw blocks
+	for (int i = 0; i < NROWS; i++)
+	{
+		for (int j = 0; j < NCOLS; j++)
+		{
+			if (!tiles[i][j])
+			{ // if block not destroyed
+				// Calculate x position starting from the right edge
+				int x = width - ((NCOLS - j) * TILE_SIZE);
+				int y = i * TILE_SIZE;
+
+				unsigned int color;
+				if ((i + j) % 2 == 0)
+				{
+					color = red;
+				}
+				else
+				{
+					color = blue;
+				}
+				draw_block(x, y, TILE_SIZE - 1, TILE_SIZE - 1, color);
+			}
+		}
 	}
 }
 
@@ -169,39 +272,40 @@ asm("WriteUart: \n\t"
 		"STRH R0, [R1]\n\t"
 		"BX LR");
 
-char UartGetChar()
-{
-	unsigned long long out = ReadUart();
-	char c = '\0';
-
-	if (out & 0x8000 && c != '\0')
-	{
-		// store first character
-		c = ((char)out & 0xFF);
-	}
-
-	// drain buffer
-	int remaining = 0;
-	while (remaining > 0)
-	{
-		/* code */
-		remaining = (out & 0xFF0000) >> 4;
-	}
-
-	return c;
-}
-
 void write(char *str)
 {
 	for (int i = 0; str[i] != '\0'; i++)
 		WriteUart(str[i]);
 }
 
+#define BALL_SPEED 3
+
+#define BAR_WIDTH 7
+#define BAR_SEGMENT_HEIGHT 15
+#define BAR_TOTAL_HEIGHT (BAR_SEGMENT_HEIGHT * 3)
+#define BAR_STEP 10
+
 // It must initialize the game
 void reset()
 {
-	// TODO: You might want to reset other state in here
-	game_init(&global);
+	game_state = Stopped;
+
+	ball.x = width / 2;
+	ball.y = height / 2;
+	ball.horizontal_direction = RIGHT;
+	ball.vertical_direction = UP;
+	ball.diameter = BALL_DIAMETER;
+	ball.speed = BALL_SPEED;
+	ball.prev_x = ball.x;
+	ball.prev_y = ball.y;
+
+	bar.x = 0;
+	bar.y = height / 2;
+	bar.width = BAR_WIDTH;
+	bar.height = BAR_TOTAL_HEIGHT;
+	bar.step = BAR_STEP;
+	bar.prev_y = bar.y;
+
 	ClearScreen();
 }
 
@@ -220,22 +324,26 @@ int main(int argc, char *argv[])
 	// HINT: This loop allows the user to restart the game after loosing/winning the previous game
 	while (1)
 	{
-		switch (global.currentState)
+		switch (game_state)
 		{
 		case Stopped:
 		{
 			/* Start screen */
 			write("Press 'w' or 's' to start game\n");
-			while (global.currentState == Stopped)
+			while (game_state == Stopped)
 			{
 				unsigned long long out = ReadUart();
-				switch ((out & 0xFF))
+				if (!(out & 0x8000))
+					continue;
+				char c = out & 0xFF;
+				switch (c)
 				{
-				case 0x77:
-				case 0x73:
-					global.currentState = Running;
+				case 'w':
+				case 's':
+					game_state = Running;
 					break;
 
+				case '\n':
 				default:
 					break;
 				}
@@ -244,68 +352,133 @@ int main(int argc, char *argv[])
 			break;
 		}
 		case Running:
-		{
-			/* Game running */
-			/* Check for win/lose condition */
-			if (global.ball.pos_x < LOSING_X_COORDINATE)
+		{ /* Game running */
+
+			int ball_right_edge = ball.x + ball.diameter;
+			
+			if (ball_right_edge <= LOSING_X_COORDINATE)
 			{
-				global.currentState = Lost;
+				game_state = Lost;
 				continue;
 			}
-			if (WINNING_X_COORDINATE < global.ball.pos_x)
+			if (WINNING_X_COORDINATE < ball_right_edge)
 			{
-				global.currentState = Won;
+				game_state = Won;
 				continue;
 			}
 
-			/* IO Update bar */
-			{
-				unsigned long long out = ReadUart();
-				if ((out & 0x8000))
+			int ball_center_x = ball.x + (ball.diameter / 2);
+			int ball_center_y = ball.y + (ball.diameter / 2);
+
+			{ /* Physics */
+				ball.x += ball.horizontal_direction * ball.speed;
+				ball.y += ball.vertical_direction * ball.speed;
+
+				// Bounce off top/bottom walls
+				if (ball.y <= 0 || ball.y >= height - ball.diameter)
+					ball.vertical_direction = (Vertical)(-ball.vertical_direction);
+
+				// Check collision with bar using ball's leftmost edge for horizontal
+				if (ball.x <= bar.x + bar.width && ball.x >= bar.x)
 				{
-					if ((out & 0xFF) == 0x77)
+					// Determine which region of the bar was hit
+					int y_diff = ball_center_y - bar.y;
+					int region_size = bar.height / 3;
+
+					ball.horizontal_direction = RIGHT;
+					
+					if (y_diff < region_size)
 					{
-						global.bar_pos_y -= BAR_SPEED;
+						ball.vertical_direction = UP;
 					}
-					if ((out & 0xFF) == 0x73)
+					else if (y_diff < 2 * region_size)
 					{
-						global.bar_pos_y += BAR_SPEED;
+						ball.vertical_direction = NEUTRAL;
+					}
+					else
+					{
+						ball.vertical_direction = DOWN;
+					}
+				}
+
+				if (ball_right_edge >= width - (NCOLS * TILE_SIZE))
+				{
+					int block_row = ball_center_y / TILE_SIZE;
+					// Calculate the relative x position from the right edge
+					int relative_x = width - ball_right_edge;
+					// Convert to column index (0 is rightmost column)
+					int block_column = NCOLS - 1 - (relative_x / TILE_SIZE);
+
+					if (block_row >= 0 && block_row < NROWS &&
+							block_column >= 0 && block_column < NCOLS &&
+							!tiles[block_row][block_column])
+					{
+						// Destroy block and paint it white immediately
+						tiles[block_row][block_column] = 1;
+						// Calculate the position and paint it white - use same formula as drawing
+						int x = width - ((NCOLS - block_column) * TILE_SIZE);
+						int y = block_row * TILE_SIZE;
+						draw_block(x, y, TILE_SIZE - 1, TILE_SIZE - 1, white);
+
+						// Reverse horizontal direction
+						ball.horizontal_direction = (Horizontal)(-ball.horizontal_direction);
+
+						// Check for corner hit with adjacent blocks
+						if (ball.y % TILE_SIZE == 0)
+						{
+							if (block_row > 0 && !tiles[block_row - 1][block_column])
+							{
+								tiles[block_row - 1][block_column] = 1;
+							}
+							if (block_row < NROWS - 1 && !tiles[block_row + 1][block_column])
+							{
+								tiles[block_row + 1][block_column] = 1;
+							}
+						}
 					}
 				}
 			}
 
-			/* Update game state */
-			draw_ball();
-			draw_bar(global.bar_pos_y);
+			{ /* IO Update bar */
+				unsigned long long out = ReadUart();
+				if (out & 0x8000)
+				{
+					char c = out & 0xFF;
+					if (c == 'w' && bar.y >= bar.step)
+					{
+						bar.y -= bar.step;
+					}
+					if (c == 's' && bar.y <= height - bar.height - bar.step)
+					{
+						bar.y += bar.step;
+					}
+				}
+			}
 
-			// TODO: Update balls position and direction
-			// physics_update();
+			{ /* Update screen */
+				// Draw new positions
+				draw_playing_field();
+				draw_ball();
+				draw_bar(bar.y);
+			}
 
-			// TODO: Hit Check with Blocks
-			// HINT: try to only do this check when we potentially have a hit, as it is relatively expensive and can slow down game play a lot
-
-			/* Update screen */
 			break;
 		}
 		case Won:
 		{
-			for (unsigned int i = 0; i < 1000000; i++)
-			{
-				write(won);
-			}
-			global.currentState = Stopped;
+			game_state = Stopped;
+			write(won);
 			reset();
+			write("Try again?\n");
 
 			break;
 		}
 		case Lost:
 		{
-			for (unsigned int i = 0; i < 1000000; i++)
-			{
-				write(lost);
-			}
-			global.currentState = Stopped;
+			game_state = Stopped;
+			write(lost);
 			reset();
+			write("Try again?\n");
 
 			break;
 		}
