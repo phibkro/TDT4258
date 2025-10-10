@@ -34,7 +34,6 @@ typedef enum _gameState
 	Exit = 4,
 } GameState;
 
-#define BRICK_SIZE 15
 typedef struct _block
 {
 	unsigned char destroyed;
@@ -290,7 +289,14 @@ void reset()
 {
 	game_state = Stopped;
 
-	ball.x = width / 2;
+	// Calculate safe spawn position - ensure we're not in the blocks area
+	int blocks_width = NCOLS * TILE_SIZE;
+	int safe_x = width / 3;  // Spawn in left third of screen
+	if (safe_x + BALL_DIAMETER >= width - blocks_width) {
+		safe_x = width - blocks_width - BALL_DIAMETER - 10;  // Extra 10px safety margin
+	}
+
+	ball.x = safe_x;
 	ball.y = height / 2;
 	ball.horizontal_direction = RIGHT;
 	ball.vertical_direction = UP;
